@@ -1,0 +1,5 @@
+2017/03/06,John Locke,On Liberty
+2017/03/06,George Orwell,Nineteen Eighty-Four
+2017/03/06,Charles Darwin,On the Origin of Species
+2017/03/06,Baruch Spinoza,Ethics
+2017/03/06,Isaac Asimov,I, Robot
