@@ -3,10 +3,10 @@
 import sys
 import os
 import signal
-import datetime
 import json
+import functools
 
-from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow
+from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor
 
@@ -57,7 +57,7 @@ class BookList(QMainWindow):
         self.resize(300, 150)
         self.center()
 
-        self.add_shortcut = QShortcut("Return", self)
+        self.add_shortcut = QShortcut("Return", self.add_widget)
         self.add_shortcut.activated.connect(self.add_book)
 
     def create_add_widget(self):
@@ -80,14 +80,19 @@ class BookList(QMainWindow):
         self.title_label.setFixedWidth(45)
 
 
-        self.date_input = QLineEdit()
+        self.date_input = QDateEdit(QDate.currentDate())
         self.date_input.setMinimumWidth(250)
         self.date_input.setMaximumWidth(500)
+        self.date_input.setCalendarPopup(True)
+        self.date_input.setDisplayFormat("yyyy/MM/dd")
+        self.date_input.setMaximumDate(QDate.currentDate())
         self.date_label = QLabel("Date:")
         self.date_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.date_label.setFixedWidth(45)
-
-
+        self.date_today = QPushButton("Today")
+        self.date_today.clicked.connect(functools.partial(self.date_input.setDate, QDate.currentDate()))
+        
+        
         self.add_btn = QPushButton("Add")
         self.add_btn.clicked.connect(self.add_book)
         self.add_btn.setMaximumWidth(500)
@@ -98,7 +103,10 @@ class BookList(QMainWindow):
         self.input_layout.addWidget(self.author_label, 1, 1)
         self.input_layout.addWidget(self.author_input, 1, 2)
         self.input_layout.addWidget(self.author_lock, 1, 3)
-        self.input_layout.addWidget(self.add_btn, 2, 2)
+        self.input_layout.addWidget(self.date_label, 2, 1)
+        self.input_layout.addWidget(self.date_input, 2, 2)
+        self.input_layout.addWidget(self.date_today, 2, 3)
+        self.input_layout.addWidget(self.add_btn, 3, 2)
 
 
         # Messing around with stretch to get the thing to stay in the middle.
@@ -271,8 +279,7 @@ class BookList(QMainWindow):
         if not self.author_input.text() or not self.title_input.text():
             result = QMessageBox.warning(self, "Message", "Please enter both an author and title.")
         else:
-            self.new_books.append(Book(self.title_input.text(), self.author_input.text(),
-                                       datetime.datetime.today().strftime("%Y/%m/%d")))
+            self.new_books.append(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
             self.add_book_to_table_widget(self.new_books[-1], new=True)
             self.reset_add_view()
 
