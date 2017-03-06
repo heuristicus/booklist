@@ -4,39 +4,40 @@ import sys
 import os
 import signal
 import datetime
+import json
 
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor
 
 class Book():
+
     def __init__(self, title, author, date):
         self.title = title
         self.author = author
-        self.add_date = date
-
-    def get_date_str(self):
-        return self.add_date.strftime("%Y/%m/%d")
-
-    def csv_str(self):
-        return "{0},{1},{2}".format(self.get_date_str(), self.author, self.title)
+        self.date = date
 
     def __repr__(self):
-        return "{0}: {1} - {2}".format(self.get_date_str(), self.author, self.title)
+        return "{0}: {1} - {2}".format(self.date, self.author, self.title)
 
 class BookList(QMainWindow):
 
-    def __init__(self):
+    # Background colour for table items which are from a new book
+    new_bg_item_colour = QColor(40,150,190)
+
+
+    def __init__(self, list_file=None):
         super(BookList, self).__init__()
 
-        self.list_file = None
+        self.list_file = list_file
         self.books = []
         self.new_books = []
 
         self.create_window()
 
-        while not self.list_file:
-            self.open_new_file()
+        # open a new file, but only force selection if one isn't provided by the
+        # commandline
+        self.open_new_file(force=self.list_file == None)
 
     def create_window(self):
         self.tabs = QTabWidget()
@@ -77,6 +78,15 @@ class BookList(QMainWindow):
         self.title_label = QLabel("Title:")
         self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.title_label.setFixedWidth(45)
+
+
+        self.date_input = QLineEdit()
+        self.date_input.setMinimumWidth(250)
+        self.date_input.setMaximumWidth(500)
+        self.date_label = QLabel("Date:")
+        self.date_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.date_label.setFixedWidth(45)
+
 
         self.add_btn = QPushButton("Add")
         self.add_btn.clicked.connect(self.add_book)
@@ -122,12 +132,18 @@ class BookList(QMainWindow):
         fileMenu.addAction(open_action)
 
     def center(self):
+        """Center the qt frame on the desktop
+        """
         qr = self.frameGeometry()
         cp = QDesktopWidget().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
     def closeEvent(self, event):
+        """On close event, ask if user wants to quit, and try to write the book list. If
+        a list doesn't exist, then don't quit.
+
+        """
         reply = QMessageBox.question(self, 'Message',
                                      "Are you sure to quit?\n{0} books will be added to your list.".format(len(self.new_books)),
                                      QMessageBox.Yes |
@@ -161,7 +177,39 @@ class BookList(QMainWindow):
 
         return self.list_file
 
+    def populate_table_widget(self):
+        """Populates the table widget with books that already exist in the file.
+        """
+        for book in self.books:
+            self.add_book_to_table_widget(book)
+
+    def add_book_to_table_widget(self, book, new=False):
+        """Adds books to the table widget. If new is set, add the book with a different
+        coloured background.
+
+        """
+        row_num = self.table_widget.rowCount()
+        self.table_widget.insertRow(row_num)
+
+        title_item = QTableWidgetItem(book.title)
+        author_item = QTableWidgetItem(book.author)
+        date_item = QTableWidgetItem(book.date)
+
+        if new:
+            title_item.setBackground(BookList.new_bg_item_colour)
+            author_item.setBackground(BookList.new_bg_item_colour)
+            date_item.setBackground(BookList.new_bg_item_colour)
+
+        self.table_widget.setItem(row_num, 0, title_item)
+        self.table_widget.setItem(row_num, 1, author_item)
+        self.table_widget.setItem(row_num, 2, date_item)
+
     def read_book_list(self):
+        """Read a book list from file. If there are any new books that have been added,
+        will write them to the file before reading a new set of books. The books
+        are read from file in a json format.
+
+        """
         if self.new_books: # if there are new books, write them to file before resetting
             self.write_book_list()
 
@@ -169,68 +217,88 @@ class BookList(QMainWindow):
         self.new_books = []
 
         with open(self.get_list_file(), 'r') as f:
-            for line in f:
-                sp = line.split(',')
-                self.books.append(Book(sp[2], sp[1], datetime.datetime.strptime(sp[0], "%Y/%m/%d").date()))
+            try:
+                for book_json in json.loads(f.read()):
+                    self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
+            except ValueError as e:
+                f.seek(0) # go back to the start of the file - read sends us to the end
+                # this probably happens if you load a list with the old csv syntax
+                for line in f:
+                    sp = line.split(',')
+                    self.books.append(Book(sp[2], sp[1], sp[0]))
 
         self.populate_table_widget()
 
-    def populate_table_widget(self):
-        for num, book in enumerate(self.books):
-            self.table_widget.insertRow(num)
-            self.table_widget.setItem(num, 0, QTableWidgetItem(book.title))
-            self.table_widget.setItem(num, 1, QTableWidgetItem(book.author))
-            self.table_widget.setItem(num, 2, QTableWidgetItem(book.get_date_str()))
-
-    def add_book_to_table_widget(self, book):
-        row_num = self.table_widget.rowCount()
-        new_bg = QColor(40,150,190)
-        self.table_widget.insertRow(row_num)
-
-        title_item = QTableWidgetItem(book.title)
-        title_item.setBackground(new_bg)
-        author_item = QTableWidgetItem(book.author)
-        author_item.setBackground(new_bg)
-        date_item = QTableWidgetItem(book.get_date_str())
-        date_item.setBackground(new_bg)
-
-        self.table_widget.setItem(row_num, 0, title_item)
-        self.table_widget.setItem(row_num, 1, author_item)
-        self.table_widget.setItem(row_num, 2, date_item)
-
     def write_book_list(self):
+        """Write the books to file. This writes books that existed in the file when it
+        was first loaded, and books which were added in the session. In this way
+        we automatically transfer modifications to any books without having to
+        check which books were modified and just changing those bits.
+
+        """
         if not self.get_list_file():
             return False
         else:
-            with open(self.get_list_file(), 'a+') as f:
-                for book in self.new_books:
-                    f.write(book.csv_str() + "\n")
+            with open(self.get_list_file(), 'w') as f:
+                all_books = self.books + self.new_books
+                book_dicts = []
+                for book in all_books:
+                    book_dicts.append(book.__dict__)
+
+                f.write(json.dumps(book_dicts, indent=1))
 
             return True
 
+    def reset_add_view(self):
+        """Reset the add view to a default state. The title and author entries are
+        cleared, and the focus is set on the title. If the author_lock checkbox
+        is checked, then we do not reset the author string to empty.
+
+        """
+        self.title_input.setText("")
+        self.title_input.setFocus()
+
+        if not self.author_lock.isChecked():
+            self.author_input.setText("")
+
     def add_book(self):
+        """Add a book to the list. This book goes into a separate list from the books
+        which existed when the file was first loaded. The book is also added to
+        the table view. Once the book is added, the add view is reset to a
+        default state.
+
+        """
         if not self.author_input.text() or not self.title_input.text():
             result = QMessageBox.warning(self, "Message", "Please enter both an author and title.")
         else:
-            self.new_books.append(Book(self.title_input.text(), self.author_input.text(), datetime.datetime.today()))
-            self.add_book_to_table_widget(self.new_books[-1])
-            self.title_input.setText("")
-            self.title_input.setFocus()
+            self.new_books.append(Book(self.title_input.text(), self.author_input.text(),
+                                       datetime.datetime.today().strftime("%Y/%m/%d")))
+            self.add_book_to_table_widget(self.new_books[-1], new=True)
+            self.reset_add_view()
 
-            if not self.author_lock.isChecked():
-                self.author_input.setText("")
+    def open_new_file(self, force=True):
+        """Opens a new file, and will not stop asking until you actually pick one. Will
+        first write newly added books to the current list file. If force is
+        True, will always ask for a new file. Otherwise, might not ask if the
+        list_file exists and is a valid file.
 
-    def open_new_file(self):
+        """
         if len(self.new_books) > 0:
             self.write_book_list()
 
-        self.get_list_file(new=True)
+        while True: # nasty
+            self.get_list_file(new=force)
+            if self.list_file:
+                break
+
         self.read_book_list()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
-    gui = BookList()
+    if len(sys.argv) > 1:
+        list_file = sys.argv[1]
+    gui = BookList(list_file)
     gui.show()
 
     try:

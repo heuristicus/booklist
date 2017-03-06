@@ -1,5 +1,32 @@
-2017/03/06,John Locke,On Liberty
-2017/03/06,George Orwell,Nineteen Eighty-Four
-2017/03/06,Charles Darwin,On the Origin of Species
-2017/03/06,Baruch Spinoza,Ethics
-2017/03/06,Isaac Asimov,I, Robot
+[
+ {
+  "date": "2017/03/06", 
+  "author": "John Locke", 
+  "title": "On Liberty\n"
+ }, 
+ {
+  "date": "2017/03/06", 
+  "author": "George Orwell", 
+  "title": "Nineteen Eighty-Four\n"
+ }, 
+ {
+  "date": "2017/03/06", 
+  "author": "Charles Darwin", 
+  "title": "On the Origin of Species\n"
+ }, 
+ {
+  "date": "2017/03/06", 
+  "author": "Baruch Spinoza", 
+  "title": "Ethics\n"
+ }, 
+ {
+  "date": "2017/03/06", 
+  "author": "Isaac Asimov", 
+  "title": "I Robot\n"
+ }, 
+ {
+  "date": "2017/03/06", 
+  "author": "Niccolo Machiavelli", 
+  "title": "The Prince"
+ }
+]

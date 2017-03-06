@@ -66,6 +66,6 @@ When you press the add button, the text in the boxes will be cleared, and the cu
 
 You can click the box next to the author field to lock the author. When this box is checked, the author will not be erased when an entry is added.
 
-### View table
+### View tab
 
 Here, you can view, sort and search books in your selected list. Books with a blue background are ones that you have added during this session.
