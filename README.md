@@ -69,3 +69,5 @@ You can click the box next to the author field to lock the author. When this box
 ### View tab
 
 Here, you can view, sort and search books in your selected list. Books with a blue background are ones that you have added during this session.
+
+You can edit the values in the table as well, by double clicking the cells. Changes will be saved to the list.

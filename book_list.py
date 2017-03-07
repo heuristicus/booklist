@@ -6,9 +6,29 @@ import signal
 import json
 import functools
 
-from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView
+from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView, QItemDelegate
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor
+
+class CalendarDelegate(QItemDelegate):
+
+    def createEditor(self, parent, option, index):
+        self.date_input = QDateEdit(parent)
+        self.date_input.setMinimumWidth(100)
+        self.date_input.setCalendarPopup(True)
+        self.date_input.setDisplayFormat("yyyy/MM/dd")
+        self.date_input.setMaximumDate(QDate.currentDate())
+
+        return self.date_input
+
+    def setEditorData(self, editor, index):
+        editor.setDate(QDate.fromString(index.model().data(index, Qt.EditRole), "yyyy/MM/dd"))
+
+    def setModelData(self, editor, model, index):
+        model.setData(index, editor.date().toString("yyyy/MM/dd"), Qt.EditRole)
+
+    def updateEditorGeometry(self, editor, option, index):
+        editor.setGeometry(option.rect)
 
 class Book(object):
 
@@ -22,6 +42,9 @@ class Book(object):
 
     def set_author(self, author):
         self.author = author
+
+    def set_date(self, date):
+        self.date = date
 
     def __repr__(self):
         return "{0}: {1} - {2}".format(self.date, self.author, self.title)
@@ -97,8 +120,7 @@ class BookList(QMainWindow):
         self.date_label.setFixedWidth(45)
         self.date_today = QPushButton("Today")
         self.date_today.clicked.connect(functools.partial(self.date_input.setDate, QDate.currentDate()))
-        
-        
+
         self.add_btn = QPushButton("Add")
         self.add_btn.clicked.connect(self.add_book)
         self.add_btn.setMaximumWidth(500)
@@ -121,7 +143,7 @@ class BookList(QMainWindow):
         self.sub_layout.addStretch()
         self.sub_layout.addLayout(self.input_layout)
         self.sub_layout.addStretch()
-        
+
         self.main_layout = QHBoxLayout()
         self.main_layout.addStretch()
         self.main_layout.addLayout(self.sub_layout)
@@ -134,7 +156,9 @@ class BookList(QMainWindow):
         self.table_widget.setColumnCount(3) # date, author, title
         self.table_widget.setSortingEnabled(True)
         self.table_widget.setHorizontalHeaderLabels(["Title", "Author", "Date"])
-        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        # self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.calendar_delegate = CalendarDelegate()
+        self.table_widget.setItemDelegateForColumn(2, self.calendar_delegate)
 
         self.table_widget.itemChanged.connect(self.table_item_updated)
 
@@ -217,13 +241,14 @@ class BookList(QMainWindow):
         author_item = QTableWidgetItem(book.author)
         date_item = QTableWidgetItem(book.date)
         # date item isn't editable
-        date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable);
+        #date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable);
 
         # crude way of being able to edit book objects when the item is changed
         # in view. The value is a function which takes a string parameter to
         # modify the object member variable
-        self.table_item_associations[title_item] = (book.set_title)
-        self.table_item_associations[author_item] = (book.set_author)
+        self.table_item_associations[title_item] = book.set_title
+        self.table_item_associations[author_item] = book.set_author
+        self.table_item_associations[date_item] = book.set_date
 
         if new:
             title_item.setBackground(BookList.new_bg_item_colour)
