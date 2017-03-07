@@ -6,16 +6,22 @@ import signal
 import json
 import functools
 
-from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit
+from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor
 
-class Book():
+class Book(object):
 
     def __init__(self, title, author, date):
         self.title = title
         self.author = author
         self.date = date
+
+    def set_title(self, title):
+        self.title = title
+
+    def set_author(self, author):
+        self.author = author
 
     def __repr__(self):
         return "{0}: {1} - {2}".format(self.date, self.author, self.title)
@@ -25,13 +31,13 @@ class BookList(QMainWindow):
     # Background colour for table items which are from a new book
     new_bg_item_colour = QColor(40,150,190)
 
-
     def __init__(self, list_file=None):
         super(BookList, self).__init__()
 
         self.list_file = list_file
         self.books = []
         self.new_books = []
+        self.table_item_associations = {}
 
         self.create_window()
 
@@ -128,6 +134,13 @@ class BookList(QMainWindow):
         self.table_widget.setColumnCount(3) # date, author, title
         self.table_widget.setSortingEnabled(True)
         self.table_widget.setHorizontalHeaderLabels(["Title", "Author", "Date"])
+        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+
+        self.table_widget.itemChanged.connect(self.table_item_updated)
+
+    def table_item_updated(self, changed_item):
+        if changed_item in self.table_item_associations:
+            self.table_item_associations[changed_item](changed_item.text())
 
     def setup_menubar(self):
         open_action = QAction('&Open', self)
@@ -188,6 +201,7 @@ class BookList(QMainWindow):
     def populate_table_widget(self):
         """Populates the table widget with books that already exist in the file.
         """
+        self.table_item_associations = {} # reset item associations, since the table is being repopulated
         for book in self.books:
             self.add_book_to_table_widget(book)
 
@@ -202,6 +216,14 @@ class BookList(QMainWindow):
         title_item = QTableWidgetItem(book.title)
         author_item = QTableWidgetItem(book.author)
         date_item = QTableWidgetItem(book.date)
+        # date item isn't editable
+        date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable);
+
+        # crude way of being able to edit book objects when the item is changed
+        # in view. The value is a function which takes a string parameter to
+        # modify the object member variable
+        self.table_item_associations[title_item] = (book.set_title)
+        self.table_item_associations[author_item] = (book.set_author)
 
         if new:
             title_item.setBackground(BookList.new_bg_item_colour)
