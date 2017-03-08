@@ -6,7 +6,7 @@ import signal
 import json
 import functools
 
-from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView, QItemDelegate
+from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView, QItemDelegate, QTableView
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor
 
@@ -30,6 +30,22 @@ class CalendarDelegate(QItemDelegate):
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
 
+class MultiColumnFilterProxyModel(QSortFilterProxyModel):
+
+    def __init__(self, parent=None):
+        super(MultiColumnFilterProxyModel, self).__init__(parent)
+        self.filter_columns = [0, 1, 2]
+    
+    def filterAcceptsRow(self, row_num, parent):
+        """http://www.dayofthenewdan.com/2013/02/09/Qt_QSortFilterProxyModel.html
+        """
+        model = self.sourceModel()
+        filter_regexp = self.filterRegExp()
+        filter_regexp.setCaseSensitivity(Qt.CaseInsensitive)
+        tests = [filter_regexp.lastIndexIn(model.index(row_num, col, parent).data().lower()) >= 0 for col in self.filter_columns]
+
+        return any(tests)
+
 class Book(object):
 
     def __init__(self, title, author, date):
@@ -46,36 +62,159 @@ class Book(object):
     def set_date(self, date):
         self.date = date
 
+    def contains(self, string):
+        """Check if any of the elements of this book contain the given string.
+
+        """
+
+        return string in self.title or string in self.author or string in self.date
+
     def __repr__(self):
         return "{0}: {1} - {2}".format(self.date, self.author, self.title)
 
-class BookList(QMainWindow):
+class BookListModel(QAbstractTableModel):
+
 
     # Background colour for table items which are from a new book
     new_bg_item_colour = QColor(40,150,190)
+    
+    def __init__(self, list_file=None, parent=None):
+        super(BookListModel, self).__init__(parent)
+        self.books = [] # all books, old and new
+        self.new_books = [] # only new books
+        self.list_file = list_file
+
+    def columnCount(self, parent):
+        return 3
+
+    def rowCount(self, parent):
+        return len(self.books)
+
+    def data(self, index, role):
+        if role == Qt.DisplayRole:
+            book = self.books[index.row()]
+            if index.column() == 0:
+                return book.title
+            elif index.column() == 1:
+                return book.author
+            elif index.column() == 2:
+                return book.date
+        if role == Qt.BackgroundRole:
+            if self.books[index.row()] in self.new_books:
+                return BookListModel.new_bg_item_colour
+
+        return QVariant()
+
+    def headerData(self, section, orientation, role):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                if section == 0:
+                    return "Title"
+                elif section == 1:
+                    return "Author"
+                elif section == 2:
+                    return "Date"
+
+        return QVariant()
+
+    def setData(self, index, value, role):
+        if role == Qt.EditRole:
+            book = self.books[index.row()]
+            if index.column() == 0:
+                book.title = value
+            elif index.column() == 1:
+                book.author = value
+            elif index.column() == 2:
+                book.date = value
+
+        return True
+
+    def flags(self, index):
+        return Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled
+
+    def insertRows(self, position, rows, index):
+        self.beginInsertRows(QModelIndex(), position, position + rows - 1)
+        
+        self.endInsertRows()
+
+    def add_book(self, book):
+        self.books.append(book)
+        self.new_books.append(book)
+        self.insertRows(len(self.books) - 1, 1, QModelIndex())
+
+    def set_list_file(self, list_file):
+        """Change the list file used by this model. Saves changes made in the session up
+        to this point in the previous file before loading the new one.
+
+        """
+        if self.list_file:
+            self.write_book_list()
+
+        self.list_file = list_file
+
+        self.read_book_list()
+
+    def read_book_list(self):
+        """Read a book list from file. If there are any new books that have been added,
+        will write them to the file before reading a new set of books. The books
+        are read from file in a json format.
+
+        """
+        if self.new_books: # if there are new books, write them to file before resetting
+            self.write_book_list()
+
+        self.books = []
+        self.new_books = []
+
+        with open(self.list_file, 'r') as f:
+            try:
+                for book_json in json.loads(f.read()):
+                    self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
+            except ValueError as e:
+                f.seek(0) # go back to the start of the file - read sends us to the end
+                # this probably happens if you load a list with the old csv syntax
+                for line in f:
+                    sp = line.split(',')
+                    self.books.append(Book(sp[2], sp[1], sp[0]))
+
+        #self.populate_table_widget()
+
+    def write_book_list(self):
+        """Write the books to file. This writes books that existed in the file when it
+        was first loaded, and books which were added in the session. In this way
+        we automatically transfer modifications to any books without having to
+        check which books were modified and just changing those bits.
+
+        """
+        with open(self.list_file, 'w') as f:
+            all_books = self.books + self.new_books
+            book_dicts = []
+            for book in all_books:
+                book_dicts.append(book.__dict__)
+
+            f.write(json.dumps(book_dicts, indent=1))
+
+class BookList(QMainWindow):
 
     def __init__(self, list_file=None):
         super(BookList, self).__init__()
 
+        self.book_model = BookListModel()
         self.list_file = list_file
-        self.books = []
-        self.new_books = []
-        self.table_item_associations = {}
-
-        self.create_window()
-
         # open a new file, but only force selection if one isn't provided by the
         # commandline
         self.open_new_file(force=self.list_file == None)
+
+        self.create_window()
 
     def create_window(self):
         self.tabs = QTabWidget()
 
         self.create_add_widget()
-        self.create_table_widget()
+        self.create_view_widget()
 
         self.tabs.addTab(self.add_widget, "Add")
-        self.tabs.addTab(self.table_widget, "View")
+        self.tabs.addTab(self.view_widget, "View")
 
         self.setCentralWidget(self.tabs)
 
@@ -83,7 +222,7 @@ class BookList(QMainWindow):
 
         self.setWindowTitle("Book List Manager")
 
-        self.resize(300, 150)
+        self.resize(500, 300)
         self.center()
 
         self.add_shortcut = QShortcut("Return", self.add_widget)
@@ -151,16 +290,67 @@ class BookList(QMainWindow):
 
         self.add_widget.setLayout(self.main_layout)
 
-    def create_table_widget(self):
-        self.table_widget = QTableWidget()
-        self.table_widget.setColumnCount(3) # date, author, title
+    def create_view_widget(self):
+        self.view_widget = QWidget()
+
+        self.table_widget = QTableView()
         self.table_widget.setSortingEnabled(True)
-        self.table_widget.setHorizontalHeaderLabels(["Title", "Author", "Date"])
-        # self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+
+        self.proxy_model = MultiColumnFilterProxyModel()
+        self.proxy_model.setSourceModel(self.book_model)
+
+        self.table_widget.setModel(self.proxy_model)
+
+        # Title and author are set to contents, but date is fixed
+        self.table_widget.horizontalHeader().setMinimumSectionSize(100)
+        self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+
+        # delegate date editing to the calendar delegate, which allows use of
+        # drop down calendar and guarantees correctness.
         self.calendar_delegate = CalendarDelegate()
         self.table_widget.setItemDelegateForColumn(2, self.calendar_delegate)
 
-        self.table_widget.itemChanged.connect(self.table_item_updated)
+        self.table_layout = QVBoxLayout()
+        self.table_layout.addWidget(self.table_widget)
+
+
+        self.search_layout = QHBoxLayout()
+        self.search_text = QLineEdit()
+        self.search_text.setPlaceholderText("Enter filter string")
+        self.search_text.setMaximumWidth(500)
+        self.search_text.textChanged.connect(self.proxy_model.setFilterRegExp)
+        # Need this because of some strange behaviour. Without this, if you type
+        # a unique filter string for a book with a short field plus an extra
+        # uninvolved character (e.g. On Liberty with the filter libertyy), and
+        # then use backspace to erase characters one by one, eventually when you
+        # erase the whole string, the columns will be resized only one, to the
+        # size of the first (short) entry to reappear in the table.
+        self.search_text.textChanged.connect(self.resize_table)
+        self.search_clear = QPushButton("Clear")
+        self.search_clear.clicked.connect(self.clear_search)
+        
+        self.search_layout.addWidget(self.search_clear)
+        self.search_layout.addWidget(self.search_text)
+        self.search_layout.addStretch()
+        
+        self.view_layout = QVBoxLayout()
+
+        self.view_layout.addLayout(self.search_layout)
+        self.view_layout.addLayout(self.table_layout)
+        
+        self.view_widget.setLayout(self.view_layout)
+
+    def resize_table(self, changed_text):
+        self.table_widget.resizeColumnsToContents()
+
+    def clear_search(self):
+        """Clears the text in the search box and resets the table to the state of
+        displaying all books in the list.
+
+        """
+        self.search_text.clear()
 
     def table_item_updated(self, changed_item):
         if changed_item in self.table_item_associations:
@@ -190,44 +380,57 @@ class BookList(QMainWindow):
 
         """
         reply = QMessageBox.question(self, 'Message',
-                                     "Are you sure to quit?\n{0} books will be added to your list.".format(len(self.new_books)),
+                                     "Are you sure to quit?\n{0} books will be added to your list.".format(len(self.book_model.new_books)),
                                      QMessageBox.Yes |
                                      QMessageBox.No, QMessageBox.No)
 
 
         if reply == QMessageBox.Yes:
-            if self.write_book_list():
-                event.accept()
-            else:
-                result = QMessageBox.warning(self, "Message", "A list file wasn't specified and you added books. Won't exit because you'll lose data!")
-                event.ignore()
+            self.book_model.write_book_list()
         else:
             event.ignore()
 
 
-    def get_list_file(self, new=False):
-        """Get the list file to be used. If new is false, will check if the list file is
-        set and exists. If new is true, will always ask for a new file.
+    def add_book(self):
+        """Add a book to the list. This book goes into a separate list from the books
+        which existed when the file was first loaded. The book is also added to
+        the table view. Once the book is added, the add view is reset to a
+        default state.
 
         """
-        if new or not self.list_file or not os.path.isfile(self.list_file):
-            result = QMessageBox.warning(self, "Message", "Please select the book list you want to use or add to.")
-            dialog = QFileDialog()
-            dialog.setFileMode(QFileDialog.AnyFile)
-            if dialog.exec_() == 1: # open clicked, otherwise cancelled
-                self.list_file = dialog.selectedFiles()[0]
-                if not os.path.isfile(self.list_file):
-                    with open(self.list_file, 'w'): # just to create the file
-                        pass
+        if not self.author_input.text() or not self.title_input.text():
+            result = QMessageBox.warning(self, "Message", "Please enter both an author and title.")
+        else:
+            self.book_model.add_book(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
+            self.reset_add_view()
 
-        return self.list_file
-
-    def populate_table_widget(self):
+    def populate_table_widget(self, filter_string=None):
         """Populates the table widget with books that already exist in the file.
         """
         self.table_item_associations = {} # reset item associations, since the table is being repopulated
+        self.table_widget.clear()
+        add = False
         for book in self.books:
-            self.add_book_to_table_widget(book)
+            if not filter_string:
+                add = True
+            else:
+                add = filter_string in book.author or filter_string in book.title or filter_string in book.date
+                                        
+            if add:
+                self.add_book_to_table_widget(book)
+
+    def open_new_file(self, force=True):
+        """Opens a new file, and will not stop asking until you actually pick one. Will
+        first write newly added books to the current list file. If force is
+        True, will always ask for a new file. Otherwise, might not ask if the
+        list_file exists and is a valid file.
+
+        """
+        while True: # nasty
+            self.get_list_file(new=force)
+            if self.list_file:
+                self.book_model.set_list_file(self.list_file)
+                break
 
     def add_book_to_table_widget(self, book, new=False):
         """Adds books to the table widget. If new is set, add the book with a different
@@ -259,51 +462,6 @@ class BookList(QMainWindow):
         self.table_widget.setItem(row_num, 1, author_item)
         self.table_widget.setItem(row_num, 2, date_item)
 
-    def read_book_list(self):
-        """Read a book list from file. If there are any new books that have been added,
-        will write them to the file before reading a new set of books. The books
-        are read from file in a json format.
-
-        """
-        if self.new_books: # if there are new books, write them to file before resetting
-            self.write_book_list()
-
-        self.books = []
-        self.new_books = []
-
-        with open(self.get_list_file(), 'r') as f:
-            try:
-                for book_json in json.loads(f.read()):
-                    self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
-            except ValueError as e:
-                f.seek(0) # go back to the start of the file - read sends us to the end
-                # this probably happens if you load a list with the old csv syntax
-                for line in f:
-                    sp = line.split(',')
-                    self.books.append(Book(sp[2], sp[1], sp[0]))
-
-        self.populate_table_widget()
-
-    def write_book_list(self):
-        """Write the books to file. This writes books that existed in the file when it
-        was first loaded, and books which were added in the session. In this way
-        we automatically transfer modifications to any books without having to
-        check which books were modified and just changing those bits.
-
-        """
-        if not self.get_list_file():
-            return False
-        else:
-            with open(self.get_list_file(), 'w') as f:
-                all_books = self.books + self.new_books
-                book_dicts = []
-                for book in all_books:
-                    book_dicts.append(book.__dict__)
-
-                f.write(json.dumps(book_dicts, indent=1))
-
-            return True
-
     def reset_add_view(self):
         """Reset the add view to a default state. The title and author entries are
         cleared, and the focus is set on the title. If the author_lock checkbox
@@ -316,36 +474,22 @@ class BookList(QMainWindow):
         if not self.author_lock.isChecked():
             self.author_input.setText("")
 
-    def add_book(self):
-        """Add a book to the list. This book goes into a separate list from the books
-        which existed when the file was first loaded. The book is also added to
-        the table view. Once the book is added, the add view is reset to a
-        default state.
+    def get_list_file(self, new=False):
+        """Get the list file to be used. If new is false, will check if the list file is
+        set and exists. If new is true, will always ask for a new file.
 
         """
-        if not self.author_input.text() or not self.title_input.text():
-            result = QMessageBox.warning(self, "Message", "Please enter both an author and title.")
-        else:
-            self.new_books.append(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
-            self.add_book_to_table_widget(self.new_books[-1], new=True)
-            self.reset_add_view()
+        if new or not self.list_file or not os.path.isfile(self.list_file):
+            result = QMessageBox.warning(self, "Message", "Please select the book list you want to use or add to.")
+            dialog = QFileDialog()
+            dialog.setFileMode(QFileDialog.AnyFile)
+            if dialog.exec_() == 1: # open clicked, otherwise cancelled
+                self.list_file = dialog.selectedFiles()[0]
+                if not os.path.isfile(self.list_file):
+                    with open(self.list_file, 'w'): # just to create the file
+                        pass
 
-    def open_new_file(self, force=True):
-        """Opens a new file, and will not stop asking until you actually pick one. Will
-        first write newly added books to the current list file. If force is
-        True, will always ask for a new file. Otherwise, might not ask if the
-        list_file exists and is a valid file.
-
-        """
-        if len(self.new_books) > 0:
-            self.write_book_list()
-
-        while True: # nasty
-            self.get_list_file(new=force)
-            if self.list_file:
-                break
-
-        self.read_book_list()
+        return self.list_file
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
