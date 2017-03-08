@@ -532,8 +532,10 @@ class BookList(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
+    list_file = None
     if len(sys.argv) > 1:
         list_file = sys.argv[1]
+
     gui = BookList(list_file)
     gui.show()
 
