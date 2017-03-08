@@ -22,10 +22,12 @@ class CalendarDelegate(QItemDelegate):
         return self.date_input
 
     def setEditorData(self, editor, index):
-        editor.setDate(QDate.fromString(index.model().data(index, Qt.EditRole), "yyyy/MM/dd"))
+        editor.setDate(QDate.fromString(index.model().data(index, Qt.DisplayRole), "yyyy/MM/dd"))
 
     def setModelData(self, editor, model, index):
-        model.setData(index, editor.date().toString("yyyy/MM/dd"), Qt.EditRole)
+        date = editor.date().toString("yyyy/MM/dd")
+        if date:
+            model.setData(index, date, Qt.EditRole)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
@@ -208,24 +210,26 @@ class BookList(QMainWindow):
         self.create_window()
 
     def create_window(self):
-        self.tabs = QTabWidget()
+        self.main_widget = QWidget()
 
         self.create_add_widget()
         self.create_view_widget()
 
-        self.tabs.addTab(self.add_widget, "Add")
-        self.tabs.addTab(self.view_widget, "View")
+        self.main_layout = QVBoxLayout()
+        self.main_layout.addWidget(self.view_widget)
+        self.main_layout.addWidget(self.add_widget)
 
-        self.setCentralWidget(self.tabs)
+        self.setCentralWidget(self.main_widget)
+        self.centralWidget().setLayout(self.main_layout)
 
         self.setup_menubar()
 
         self.setWindowTitle("Book List Manager")
 
-        self.resize(500, 300)
+        self.resize(430, 600)
         self.center()
 
-        self.add_shortcut = QShortcut("Return", self.add_widget)
+        self.add_shortcut = QShortcut("Return", self.add_widget, context=Qt.WidgetWithChildrenShortcut)
         self.add_shortcut.activated.connect(self.add_book)
 
     def create_add_widget(self):
@@ -279,16 +283,14 @@ class BookList(QMainWindow):
         # Messing around with stretch to get the thing to stay in the middle.
         # Probably a better way of doing this.
         self.sub_layout = QVBoxLayout()
-        self.sub_layout.addStretch()
         self.sub_layout.addLayout(self.input_layout)
-        self.sub_layout.addStretch()
 
-        self.main_layout = QHBoxLayout()
-        self.main_layout.addStretch()
-        self.main_layout.addLayout(self.sub_layout)
-        self.main_layout.addStretch()
+        self.add_layout = QHBoxLayout()
+        self.add_layout.addStretch()
+        self.add_layout.addLayout(self.sub_layout)
+        self.add_layout.addStretch()
 
-        self.add_widget.setLayout(self.main_layout)
+        self.add_widget.setLayout(self.add_layout)
 
     def create_view_widget(self):
         self.view_widget = QWidget()
@@ -365,6 +367,7 @@ class BookList(QMainWindow):
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(open_action)
+        menubar.setVisible(True)
 
     def center(self):
         """Center the qt frame on the desktop
