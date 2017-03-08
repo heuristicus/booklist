@@ -5,10 +5,11 @@ import os
 import signal
 import json
 import functools
+import itertools
 
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView, QItemDelegate, QTableView
 from PyQt5.QtCore import *
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QKeySequence
 
 class CalendarDelegate(QItemDelegate):
 
@@ -70,6 +71,9 @@ class Book(object):
         """
 
         return string in self.title or string in self.author or string in self.date
+        
+    def __eq__(self, other):
+        return self.title == other.title and self.author == other.author and self.date == other.date
 
     def __repr__(self):
         return "{0}: {1} - {2}".format(self.date, self.author, self.title)
@@ -84,6 +88,7 @@ class BookListModel(QAbstractTableModel):
         super(BookListModel, self).__init__(parent)
         self.books = [] # all books, old and new
         self.new_books = [] # only new books
+        self.deleted_books = []
         self.list_file = list_file
 
     def columnCount(self, parent):
@@ -134,10 +139,21 @@ class BookListModel(QAbstractTableModel):
     def flags(self, index):
         return Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled
 
-    def insertRows(self, position, rows, index):
-        self.beginInsertRows(QModelIndex(), position, position + rows - 1)
-        
+    def insertRows(self, row, count, parent):
+        self.beginInsertRows(QModelIndex(), row, row + count - 1)
         self.endInsertRows()
+
+    def removeRows(self, row, count, parent):
+        self.beginRemoveRows(QModelIndex(), row, row + count - 1)
+        to_del = self.books[row:row + count] # can't delete and loop
+        for book in to_del:
+            self.deleted_books.append(book)
+            self.books.remove(book)
+
+            if book in self.new_books:
+                self.new_books.remove(book)
+
+        self.endRemoveRows()
 
     def add_book(self, book):
         self.books.append(book)
@@ -229,9 +245,6 @@ class BookList(QMainWindow):
         self.resize(430, 600)
         self.center()
 
-        self.add_shortcut = QShortcut("Return", self.add_widget, context=Qt.WidgetWithChildrenShortcut)
-        self.add_shortcut.activated.connect(self.add_book)
-
     def create_add_widget(self):
         self.add_widget = QWidget()
 
@@ -292,6 +305,9 @@ class BookList(QMainWindow):
 
         self.add_widget.setLayout(self.add_layout)
 
+        self.add_shortcut = QShortcut("Return", self.add_widget, context=Qt.WidgetWithChildrenShortcut)
+        self.add_shortcut.activated.connect(self.add_book)
+
     def create_view_widget(self):
         self.view_widget = QWidget()
 
@@ -321,6 +337,7 @@ class BookList(QMainWindow):
         self.search_layout = QHBoxLayout()
         self.search_text = QLineEdit()
         self.search_text.setPlaceholderText("Enter filter string")
+        self.search_text.setMinimumWidth(200)
         self.search_text.setMaximumWidth(500)
         self.search_text.textChanged.connect(self.proxy_model.setFilterRegExp)
         # Need this because of some strange behaviour. Without this, if you type
@@ -343,6 +360,9 @@ class BookList(QMainWindow):
         self.view_layout.addLayout(self.table_layout)
         
         self.view_widget.setLayout(self.view_layout)
+
+        self.delete_shortcut = QShortcut(QKeySequence.Delete, self.view_widget, context=Qt.WidgetWithChildrenShortcut)
+        self.delete_shortcut.activated.connect(self.delete_book)
 
     def resize_table(self, changed_text):
         self.table_widget.resizeColumnsToContents()
@@ -406,6 +426,21 @@ class BookList(QMainWindow):
         else:
             self.book_model.add_book(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
             self.reset_add_view()
+
+    def delete_book(self):
+        # Do things this way because the rows aren't deleted simultaneously, so
+        # the indexes of the items change
+        selected = self.table_widget.selectedIndexes()
+        reply = QMessageBox.question(self, 'Delete selection',
+                                     "Are you sure to delete these books?\n{0} books will be removed from your list.".format(len(selected)),
+                                     QMessageBox.Yes |
+                                     QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            while selected:
+                index = selected.pop()
+                self.book_model.removeRows(index.row(), 1, index)
+                selected = self.table_widget.selectedIndexes()
 
     def populate_table_widget(self, filter_string=None):
         """Populates the table widget with books that already exist in the file.

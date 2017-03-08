@@ -65,3 +65,5 @@ You can click the box next to the author field to lock the author. When this box
 The table view shows you the books currently in your list. Books with a blue background are ones that you have added during this session. Sort books by clicking the column headers,  and search books by writing in the filter box. You can use basic strings or regex syntax which conforms to [QRegExp](https://doc.qt.io/qt-4.8/qregexp.html).
 
 You can edit the values in the table as well, by double clicking the cells. Changes will be saved to the list when you exit the program.
+
+You can select books in the table by clicking on the cell. Using ctrl+click you can select multiple non-contiguous books, and with shift you can select contiguous books. Pressing the delete key will then delete these books.
