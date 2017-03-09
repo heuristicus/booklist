@@ -38,7 +38,7 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super(MultiColumnFilterProxyModel, self).__init__(parent)
         self.filter_columns = [0, 1, 2]
-    
+
     def filterAcceptsRow(self, row_num, parent):
         """http://www.dayofthenewdan.com/2013/02/09/Qt_QSortFilterProxyModel.html
         """
@@ -71,7 +71,7 @@ class Book(object):
         """
 
         return string in self.title or string in self.author or string in self.date
-        
+
     def __eq__(self, other):
         return self.title == other.title and self.author == other.author and self.date == other.date
 
@@ -83,7 +83,7 @@ class BookListModel(QAbstractTableModel):
 
     # Background colour for table items which are from a new book
     new_bg_item_colour = QColor(40,150,190)
-    
+
     def __init__(self, list_file=None, parent=None):
         super(BookListModel, self).__init__(parent)
         self.books = [] # all books, old and new
@@ -98,7 +98,7 @@ class BookListModel(QAbstractTableModel):
         return len(self.books)
 
     def data(self, index, role):
-        if role == Qt.DisplayRole:
+        if role == Qt.DisplayRole or role == Qt.EditRole:
             book = self.books[index.row()]
             if index.column() == 0:
                 return book.title
@@ -195,8 +195,6 @@ class BookListModel(QAbstractTableModel):
                     sp = line.split(',')
                     self.books.append(Book(sp[2], sp[1], sp[0]))
 
-        #self.populate_table_widget()
-
     def write_book_list(self):
         """Write the books to file. This writes books that existed in the file when it
         was first loaded, and books which were added in the session. In this way
@@ -205,9 +203,8 @@ class BookListModel(QAbstractTableModel):
 
         """
         with open(self.list_file, 'w') as f:
-            all_books = self.books + self.new_books
             book_dicts = []
-            for book in all_books:
+            for book in self.books:
                 book_dicts.append(book.__dict__)
 
             f.write(json.dumps(book_dicts, indent=1))
@@ -239,10 +236,17 @@ class BookList(QMainWindow):
         self.centralWidget().setLayout(self.main_layout)
 
         self.setup_menubar()
+        self.update_status()
+
+        self.title_input.setFocus()
 
         self.setWindowTitle("Book List Manager")
 
-        self.resize(430, 600)
+        tablewidth = 0
+        for i in range(0, self.book_model.columnCount(QModelIndex())):
+            tablewidth += self.table_widget.columnWidth(i)
+
+        self.resize(tablewidth + 50, 600)
         self.center()
 
     def create_add_widget(self):
@@ -251,18 +255,20 @@ class BookList(QMainWindow):
         self.author_input = QLineEdit()
         self.author_input.setMinimumWidth(250)
         self.author_input.setMaximumWidth(500)
-        self.author_label = QLabel("Author:")
-        self.author_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.author_label.setFixedWidth(45)
+        self.author_input.setPlaceholderText("Author")
+        # self.author_label = QLabel("Author:")
+        # self.author_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        # self.author_label.setFixedWidth(45)
         self.author_lock = QCheckBox()
         self.author_lock.setToolTip("Don't erase author when adding")
 
         self.title_input = QLineEdit()
         self.title_input.setMinimumWidth(250)
         self.title_input.setMaximumWidth(500)
-        self.title_label = QLabel("Title:")
-        self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.title_label.setFixedWidth(45)
+        self.title_input.setPlaceholderText("Title")
+        # self.title_label = QLabel("Title:")
+        # self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        # self.title_label.setFixedWidth(45)
 
 
         self.date_input = QDateEdit(QDate.currentDate())
@@ -271,9 +277,9 @@ class BookList(QMainWindow):
         self.date_input.setCalendarPopup(True)
         self.date_input.setDisplayFormat("yyyy/MM/dd")
         self.date_input.setMaximumDate(QDate.currentDate())
-        self.date_label = QLabel("Date:")
-        self.date_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.date_label.setFixedWidth(45)
+        # self.date_label = QLabel("Date:")
+        # self.date_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        # self.date_label.setFixedWidth(45)
         self.date_today = QPushButton("Today")
         self.date_today.clicked.connect(functools.partial(self.date_input.setDate, QDate.currentDate()))
 
@@ -282,12 +288,12 @@ class BookList(QMainWindow):
         self.add_btn.setMaximumWidth(500)
 
         self.input_layout = QGridLayout()
-        self.input_layout.addWidget(self.title_label, 0, 1)
+        #self.input_layout.addWidget(self.title_label, 0, 1)
         self.input_layout.addWidget(self.title_input, 0, 2)
-        self.input_layout.addWidget(self.author_label, 1, 1)
+        #self.input_layout.addWidget(self.author_label, 1, 1)
         self.input_layout.addWidget(self.author_input, 1, 2)
         self.input_layout.addWidget(self.author_lock, 1, 3)
-        self.input_layout.addWidget(self.date_label, 2, 1)
+        #self.input_layout.addWidget(self.date_label, 2, 1)
         self.input_layout.addWidget(self.date_input, 2, 2)
         self.input_layout.addWidget(self.date_today, 2, 3)
         self.input_layout.addWidget(self.add_btn, 3, 2)
@@ -321,6 +327,7 @@ class BookList(QMainWindow):
 
         # Title and author are set to contents, but date is fixed
         self.table_widget.horizontalHeader().setMinimumSectionSize(100)
+        self.table_widget.horizontalHeader().setMaximumSectionSize(400)
         self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
@@ -340,6 +347,7 @@ class BookList(QMainWindow):
         self.search_text.setMinimumWidth(200)
         self.search_text.setMaximumWidth(500)
         self.search_text.textChanged.connect(self.proxy_model.setFilterRegExp)
+        self.search_text.textChanged.connect(self.update_status)
         # Need this because of some strange behaviour. Without this, if you type
         # a unique filter string for a book with a short field plus an extra
         # uninvolved character (e.g. On Liberty with the filter libertyy), and
@@ -349,22 +357,22 @@ class BookList(QMainWindow):
         self.search_text.textChanged.connect(self.resize_table)
         self.search_clear = QPushButton("Clear")
         self.search_clear.clicked.connect(self.clear_search)
-        
+
         self.search_layout.addWidget(self.search_clear)
         self.search_layout.addWidget(self.search_text)
         self.search_layout.addStretch()
-        
+
         self.view_layout = QVBoxLayout()
 
         self.view_layout.addLayout(self.search_layout)
         self.view_layout.addLayout(self.table_layout)
-        
+
         self.view_widget.setLayout(self.view_layout)
 
         self.delete_shortcut = QShortcut(QKeySequence.Delete, self.view_widget, context=Qt.WidgetWithChildrenShortcut)
         self.delete_shortcut.activated.connect(self.delete_book)
 
-    def resize_table(self, changed_text):
+    def resize_table(self, changed_text=None):
         self.table_widget.resizeColumnsToContents()
 
     def clear_search(self):
@@ -426,6 +434,8 @@ class BookList(QMainWindow):
         else:
             self.book_model.add_book(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
             self.reset_add_view()
+            self.resize_table()
+            self.update_status()
 
     def delete_book(self):
         # Do things this way because the rows aren't deleted simultaneously, so
@@ -441,21 +451,19 @@ class BookList(QMainWindow):
                 index = selected.pop()
                 self.book_model.removeRows(index.row(), 1, index)
                 selected = self.table_widget.selectedIndexes()
+            self.update_status()
+            self.resize_table()
 
-    def populate_table_widget(self, filter_string=None):
-        """Populates the table widget with books that already exist in the file.
-        """
-        self.table_item_associations = {} # reset item associations, since the table is being repopulated
-        self.table_widget.clear()
-        add = False
-        for book in self.books:
-            if not filter_string:
-                add = True
-            else:
-                add = filter_string in book.author or filter_string in book.title or filter_string in book.date
-                                        
-            if add:
-                self.add_book_to_table_widget(book)
+    def update_status(self, string=None):
+        status_string = "Total: {0}".format(len(self.book_model.books))
+        new = len(self.book_model.new_books)
+        if new > 0:
+            status_string += ", New: {0}".format(new)
+
+        filtered = self.proxy_model.rowCount(QModelIndex())
+        if filtered != len(self.book_model.books):
+            status_string += ", Filtered: {0}".format(filtered)
+        self.statusBar().showMessage(status_string)
 
     def open_new_file(self, force=True):
         """Opens a new file, and will not stop asking until you actually pick one. Will
@@ -469,36 +477,6 @@ class BookList(QMainWindow):
             if self.list_file:
                 self.book_model.set_list_file(self.list_file)
                 break
-
-    def add_book_to_table_widget(self, book, new=False):
-        """Adds books to the table widget. If new is set, add the book with a different
-        coloured background.
-
-        """
-        row_num = self.table_widget.rowCount()
-        self.table_widget.insertRow(row_num)
-
-        title_item = QTableWidgetItem(book.title)
-        author_item = QTableWidgetItem(book.author)
-        date_item = QTableWidgetItem(book.date)
-        # date item isn't editable
-        #date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable);
-
-        # crude way of being able to edit book objects when the item is changed
-        # in view. The value is a function which takes a string parameter to
-        # modify the object member variable
-        self.table_item_associations[title_item] = book.set_title
-        self.table_item_associations[author_item] = book.set_author
-        self.table_item_associations[date_item] = book.set_date
-
-        if new:
-            title_item.setBackground(BookList.new_bg_item_colour)
-            author_item.setBackground(BookList.new_bg_item_colour)
-            date_item.setBackground(BookList.new_bg_item_colour)
-
-        self.table_widget.setItem(row_num, 0, title_item)
-        self.table_widget.setItem(row_num, 1, author_item)
-        self.table_widget.setItem(row_num, 2, date_item)
 
     def reset_add_view(self):
         """Reset the add view to a default state. The title and author entries are
