@@ -6,10 +6,18 @@ import signal
 import json
 import functools
 import itertools
+import datetime
 
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView, QItemDelegate, QTableView
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor, QKeySequence
+
+logging_enabled = False
+
+def log(string):
+    if logging_enabled:
+        with open("booklist.log", 'a+') as f:
+            f.write("{0}: {1}\n".format(datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S.%f"), string))
 
 class CalendarDelegate(QItemDelegate):
 
@@ -55,6 +63,7 @@ class Book(object):
         self.title = title
         self.author = author
         self.date = date
+        log("created book {0}".format(self.__repr__()))
 
     def set_title(self, title):
         self.title = title
@@ -152,10 +161,13 @@ class BookListModel(QAbstractTableModel):
 
             if book in self.new_books:
                 self.new_books.remove(book)
+            log("removed book {0}".format(book.__repr__()))
 
         self.endRemoveRows()
+        return True
 
     def add_book(self, book):
+        log("adding book")
         self.books.append(book)
         self.new_books.append(book)
         self.insertRows(len(self.books) - 1, 1, QModelIndex())
@@ -165,10 +177,12 @@ class BookListModel(QAbstractTableModel):
         to this point in the previous file before loading the new one.
 
         """
+        log("changing list file, current is {0}".format(list_file))
         if self.list_file:
             self.write_book_list()
 
         self.list_file = list_file
+        log("list file set to {0}".format(self.list_file))
 
         self.read_book_list()
 
@@ -185,15 +199,18 @@ class BookListModel(QAbstractTableModel):
         self.new_books = []
 
         with open(self.list_file, 'r') as f:
+            log("reading book list from {0}".format(self.list_file))
             try:
                 for book_json in json.loads(f.read()):
                     self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
+                log("read from new style list")
             except ValueError as e:
                 f.seek(0) # go back to the start of the file - read sends us to the end
                 # this probably happens if you load a list with the old csv syntax
                 for line in f:
                     sp = line.split(',')
                     self.books.append(Book(sp[2], sp[1], sp[0]))
+                log("read from old style list from {0}".format(self.list_file))
 
     def write_book_list(self):
         """Write the books to file. This writes books that existed in the file when it
@@ -202,9 +219,11 @@ class BookListModel(QAbstractTableModel):
         check which books were modified and just changing those bits.
 
         """
+        log("writing book list to {0}".format(self.list_file))
         with open(self.list_file, 'w') as f:
             book_dicts = []
             for book in self.books:
+                log("wrote {0}".format(book.__dict__))
                 book_dicts.append(book.__dict__)
 
             f.write(json.dumps(book_dicts, indent=1))
@@ -215,12 +234,16 @@ class BookList(QMainWindow):
         super(BookList, self).__init__()
 
         self.book_model = BookListModel()
+        log("created book list model")
         self.list_file = list_file
+        log("got list file {0}".format(self.list_file))
+
         # open a new file, but only force selection if one isn't provided by the
         # commandline
         self.open_new_file(force=self.list_file == None)
 
         self.create_window()
+        log("booklist init completed")
 
     def create_window(self):
         self.main_widget = QWidget()
@@ -393,6 +416,7 @@ class BookList(QMainWindow):
         self.move(qr.topLeft())
 
     def closeEvent(self, event):
+        log("got close event")
         """On close event, ask if user wants to quit, and try to write the book list. If
         a list doesn't exist, then don't quit.
 
@@ -404,8 +428,10 @@ class BookList(QMainWindow):
 
 
         if reply == QMessageBox.Yes:
+            log("close event accepted")
             self.book_model.write_book_list()
         else:
+            log("close event ignored")
             event.ignore()
 
 
@@ -425,9 +451,11 @@ class BookList(QMainWindow):
             self.update_status()
 
     def delete_book(self):
+        log("deleting books")
         # Do things this way because the rows aren't deleted simultaneously, so
         # the indexes of the items change
         selected = self.table_widget.selectedIndexes()
+        log("selected indices {0}".format(selected))
         reply = QMessageBox.question(self, 'Delete selection',
                                      "Are you sure to delete these books?\n{0} books will be removed from your list.".format(len(selected)),
                                      QMessageBox.Yes |
@@ -436,7 +464,8 @@ class BookList(QMainWindow):
         if reply == QMessageBox.Yes:
             while selected:
                 index = selected.pop()
-                self.book_model.removeRows(index.row(), 1, index)
+                log("removing book at row {0}".format(index.row()))
+                self.proxy_model.removeRows(index.row(), 1, index)
                 selected = self.table_widget.selectedIndexes()
             self.update_status()
             self.resize_table()
@@ -459,11 +488,14 @@ class BookList(QMainWindow):
         list_file exists and is a valid file.
 
         """
+        log("opening new file with arg force={0}".format(force))
         while True: # nasty
             self.get_list_file(new=force)
             if self.list_file:
                 self.book_model.set_list_file(self.list_file)
                 break
+
+        log("got new list file {0}".format(self.list_file))
 
     def reset_add_view(self):
         """Reset the add view to a default state. The title and author entries are
@@ -482,13 +514,40 @@ class BookList(QMainWindow):
         set and exists. If new is true, will always ask for a new file.
 
         """
+        log("getting list file, current is {0}".format(self.list_file))
         if new or not self.list_file or not os.path.isfile(self.list_file):
-            result = QMessageBox.warning(self, "Message", "Please select the book list you want to use or add to.")
+            log("Querying user")
+            message_box = QMessageBox()
+            message_box.setText("Open existing book list or create a new one?")
+            message_box.setWindowTitle("Select list file")
+            existing_button = message_box.addButton("Open Existing", QMessageBox.YesRole)
+            new_button = message_box.addButton("Create new", QMessageBox.YesRole)
+
+            message_box.setDefaultButton(existing_button)
+            message_box.exec_()
+
             dialog = QFileDialog()
-            dialog.setFileMode(QFileDialog.AnyFile)
+            dialog.setNameFilter("Only .txt files (*.txt)")
+
+            if message_box.clickedButton() == new_button:
+                dialog.setFileMode(QFileDialog.AnyFile)
+                dialog.setDefaultSuffix("txt")
+            elif message_box.clickedButton() == existing_button:
+                dialog.setFileMode(QFileDialog.ExistingFile)
+
             if dialog.exec_() == 1: # open clicked, otherwise cancelled
-                self.list_file = dialog.selectedFiles()[0]
+                selected = dialog.selectedFiles()[0]
+                _, ext = os.path.splitext(selected)
+
+                if ext != ".txt":
+                    selected += ".txt"
+                    result = QMessageBox.warning(self, "Your filename was changed", 'You selected a filename with an extension other than ".txt", but the program only supports list files with the  ".txt" extension. You can find your file at:\n {0}'.format(selected))
+
+                self.list_file = selected
+
+                log("Got file {0} from user".format(self.list_file))
                 if not os.path.isfile(self.list_file):
+                    log("File did not exist - creating")
                     with open(self.list_file, 'w'): # just to create the file
                         pass
 
@@ -496,9 +555,11 @@ class BookList(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-
+    log("-------------------- START --------------------")
+    log("args: {0}".format(sys.argv))
     list_file = None
     if len(sys.argv) > 1:
+        log("got list file in args")
         list_file = sys.argv[1]
 
     gui = BookList(list_file)
@@ -507,4 +568,5 @@ if __name__ == '__main__':
     try:
         sys.exit(app.exec_())
     except Exception as e:
+        log("caught exception in main")
         gui.write_book_list()
