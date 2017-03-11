@@ -256,9 +256,6 @@ class BookList(QMainWindow):
         self.author_input.setMinimumWidth(250)
         self.author_input.setMaximumWidth(500)
         self.author_input.setPlaceholderText("Author")
-        # self.author_label = QLabel("Author:")
-        # self.author_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        # self.author_label.setFixedWidth(45)
         self.author_lock = QCheckBox()
         self.author_lock.setToolTip("Don't erase author when adding")
 
@@ -266,10 +263,6 @@ class BookList(QMainWindow):
         self.title_input.setMinimumWidth(250)
         self.title_input.setMaximumWidth(500)
         self.title_input.setPlaceholderText("Title")
-        # self.title_label = QLabel("Title:")
-        # self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        # self.title_label.setFixedWidth(45)
-
 
         self.date_input = QDateEdit(QDate.currentDate())
         self.date_input.setMinimumWidth(250)
@@ -277,9 +270,6 @@ class BookList(QMainWindow):
         self.date_input.setCalendarPopup(True)
         self.date_input.setDisplayFormat("yyyy/MM/dd")
         self.date_input.setMaximumDate(QDate.currentDate())
-        # self.date_label = QLabel("Date:")
-        # self.date_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        # self.date_label.setFixedWidth(45)
         self.date_today = QPushButton("Today")
         self.date_today.clicked.connect(functools.partial(self.date_input.setDate, QDate.currentDate()))
 
@@ -288,16 +278,12 @@ class BookList(QMainWindow):
         self.add_btn.setMaximumWidth(500)
 
         self.input_layout = QGridLayout()
-        #self.input_layout.addWidget(self.title_label, 0, 1)
         self.input_layout.addWidget(self.title_input, 0, 2)
-        #self.input_layout.addWidget(self.author_label, 1, 1)
         self.input_layout.addWidget(self.author_input, 1, 2)
         self.input_layout.addWidget(self.author_lock, 1, 3)
-        #self.input_layout.addWidget(self.date_label, 2, 1)
         self.input_layout.addWidget(self.date_input, 2, 2)
         self.input_layout.addWidget(self.date_today, 2, 3)
         self.input_layout.addWidget(self.add_btn, 3, 2)
-
 
         # Messing around with stretch to get the thing to stay in the middle.
         # Probably a better way of doing this.
@@ -324,6 +310,8 @@ class BookList(QMainWindow):
         self.proxy_model.setSourceModel(self.book_model)
 
         self.table_widget.setModel(self.proxy_model)
+        # Can only sort properly after proxy model has been set
+        self.table_widget.sortByColumn(2, Qt.DescendingOrder)
 
         # Title and author are set to contents, but date is fixed
         self.table_widget.horizontalHeader().setMinimumSectionSize(100)
@@ -339,7 +327,6 @@ class BookList(QMainWindow):
 
         self.table_layout = QVBoxLayout()
         self.table_layout.addWidget(self.table_widget)
-
 
         self.search_layout = QHBoxLayout()
         self.search_text = QLineEdit()
