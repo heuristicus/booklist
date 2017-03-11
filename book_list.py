@@ -137,9 +137,9 @@ class BookListModel(QAbstractTableModel):
         if role == Qt.EditRole:
             book = self.books[index.row()]
             if index.column() == 0:
-                book.title = value
+                book.title = value.encode("utf-8")
             elif index.column() == 1:
-                book.author = value
+                book.author = value.encode("utf-8")
             elif index.column() == 2:
                 book.date = value
 
@@ -202,7 +202,8 @@ class BookListModel(QAbstractTableModel):
             log("reading book list from {0}".format(self.list_file))
             try:
                 for book_json in json.loads(f.read()):
-                    self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
+                    if book_json:
+                        self.books.append(Book(book_json["title"].encode('utf-8'), book_json["author"].encode('utf-8'), book_json["date"]))
                 log("read from new style list")
             except ValueError as e:
                 f.seek(0) # go back to the start of the file - read sends us to the end
@@ -445,7 +446,7 @@ class BookList(QMainWindow):
         if not self.author_input.text() or not self.title_input.text():
             result = QMessageBox.warning(self, "Message", "Please enter both an author and title.")
         else:
-            self.book_model.add_book(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
+            self.book_model.add_book(Book(self.title_input.text().encode('utf-8'), self.author_input.text().encode('utf-8'), self.date_input.date().toString("yyyy/MM/dd")))
             self.reset_add_view()
             self.resize_table()
             self.update_status()
