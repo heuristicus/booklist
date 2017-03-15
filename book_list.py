@@ -63,7 +63,7 @@ class Book(object):
         self.title = title
         self.author = author
         self.date = date
-        log("created book {0}".format(self.__repr__()))
+        log(u"created book {0}".format(self.__repr__()))
 
     def set_title(self, title):
         self.title = title
@@ -85,7 +85,7 @@ class Book(object):
         return self.title == other.title and self.author == other.author and self.date == other.date
 
     def __repr__(self):
-        return "{0}: {1} - {2}".format(self.date, self.author, self.title)
+        return u"{0}: {1} - {2}".format(self.date, self.author, self.title)
 
 class BookListModel(QAbstractTableModel):
 
@@ -199,18 +199,8 @@ class BookListModel(QAbstractTableModel):
         self.new_books = []
 
         with open(self.list_file, 'r') as f:
-            log("reading book list from {0}".format(self.list_file))
-            try:
-                for book_json in json.loads(f.read()):
-                    self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
-                log("read from new style list")
-            except ValueError as e:
-                f.seek(0) # go back to the start of the file - read sends us to the end
-                # this probably happens if you load a list with the old csv syntax
-                for line in f:
-                    sp = line.split(',')
-                    self.books.append(Book(sp[2], sp[1], sp[0]))
-                log("read from old style list from {0}".format(self.list_file))
+            for book_json in json.loads(f.read()):
+                self.books.append(Book(book_json["title"], book_json["author"], book_json["date"]))
 
     def write_book_list(self):
         """Write the books to file. This writes books that existed in the file when it
