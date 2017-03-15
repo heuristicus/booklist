@@ -7,12 +7,14 @@ import json
 import functools
 import itertools
 import datetime
+import platform
+import codecs
 
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMessageBox, QLineEdit, QMainWindow, QGridLayout, QVBoxLayout, QDesktopWidget, QAction, QHBoxLayout, QLabel, QShortcut, QCheckBox, QTabWidget, QTableWidget, QTableWidgetItem, QSpacerItem, QMainWindow, QDateEdit, QHeaderView, QItemDelegate, QTableView
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor, QKeySequence
 
-logging_enabled = False
+logging_enabled = True
 
 def log(string):
     if logging_enabled:
@@ -53,8 +55,20 @@ class MultiColumnFilterProxyModel(QSortFilterProxyModel):
         model = self.sourceModel()
         filter_regexp = self.filterRegExp()
         filter_regexp.setCaseSensitivity(Qt.CaseInsensitive)
-        tests = [filter_regexp.lastIndexIn(model.index(row_num, col, parent).data().lower()) >= 0 for col in self.filter_columns]
 
+        if platform.system() == "Windows":
+            # Windows doesn't like utf8 data passed directly to the lastIndexIn function, for some reason
+            tests = []
+            for col in self.filter_columns:
+                data = model.index(row_num, col, parent).data().lower()
+                print(data)
+                if hasattr(data, "decode"):
+                    data = data.decode('utf-8')
+                
+                tests.append(filter_regexp.lastIndexIn(data) >= 0) # if the regex matches part of the string
+        else:
+            tests = [filter_regexp.lastIndexIn(model.index(row_num, col, parent).data().lower()) >= 0 for col in self.filter_columns]
+        
         return any(tests)
 
 class Book(object):
@@ -198,10 +212,10 @@ class BookListModel(QAbstractTableModel):
         self.books = []
         self.new_books = []
 
-        with open(self.list_file, 'r') as f:
+        with codecs.open(self.list_file, 'r', encoding='utf-8') as f:
             log("reading book list from {0}".format(self.list_file))
             try:
-                for book_json in json.loads(f.read()):
+                for book_json in json.loads(f.read(), encoding='utf-8'):
                     if book_json:
                         self.books.append(Book(book_json["title"].encode('utf-8'), book_json["author"].encode('utf-8'), book_json["date"]))
                 log("read from new style list")
@@ -224,10 +238,11 @@ class BookListModel(QAbstractTableModel):
         with open(self.list_file, 'w') as f:
             book_dicts = []
             for book in self.books:
-                log("wrote {0}".format(book.__dict__))
-                book_dicts.append(book.__dict__)
+                book_dict = {"date": book.date, "author": book.author.decode('utf-8'), "title": book.title.decode('utf-8')}
+                log("wrote {0}".format(book_dict))
+                book_dicts.append(book_dict)
 
-            f.write(json.dumps(book_dicts, indent=1))
+            f.write(json.dumps(book_dicts, indent=1, encoding='utf-8'))
 
 class BookList(QMainWindow):
 
@@ -260,6 +275,11 @@ class BookList(QMainWindow):
         self.centralWidget().setLayout(self.main_layout)
 
         self.setup_menubar()
+        # get rid of the statusbar borders
+        # self.setStyleSheet("QStatusBar::item { border: 0px solid black };")
+        # self.status_filename_label = QLabel(os.path.abspath(self.list_file))
+        # self.status_filename_label.setContentsMargins(0, 0, 0, 0);
+        # self.statusBar().addPermanentWidget(self.status_filename_label)
         self.update_status()
 
         self.title_input.setFocus()
@@ -339,7 +359,6 @@ class BookList(QMainWindow):
 
         # Title and author are set to contents, but date is fixed
         self.table_widget.horizontalHeader().setMinimumSectionSize(100)
-        self.table_widget.horizontalHeader().setMaximumSectionSize(400)
         self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
@@ -480,6 +499,7 @@ class BookList(QMainWindow):
         filtered = self.proxy_model.rowCount(QModelIndex())
         if filtered != len(self.book_model.books):
             status_string += ", Filtered: {0}".format(filtered)
+
         self.statusBar().showMessage(status_string)
 
     def open_new_file(self, force=True):
@@ -569,5 +589,5 @@ if __name__ == '__main__':
     try:
         sys.exit(app.exec_())
     except Exception as e:
-        log("caught exception in main")
+        log("caught exception in main: {0}".format(e))
         gui.write_book_list()
