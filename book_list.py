@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QPushButton, QMe
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QColor, QKeySequence
 
-logging_enabled = False
+logging_enabled = True
 
 def log(string):
     if logging_enabled:
@@ -171,6 +171,16 @@ class BookListModel(QAbstractTableModel):
         self.books.append(book)
         self.new_books.append(book)
         self.insertRows(len(self.books) - 1, 1, QModelIndex())
+
+    def has_book(self, new_book):
+        for book in self.books:
+            title_match = new_book.title.lower() == book.title.lower()
+            author_match = new_book.author.lower() == book.author.lower()
+            if author_match and title_match:
+                log("Book exists in list")
+                return True
+
+        return False
 
     def set_list_file(self, list_file):
         """Change the list file used by this model. Saves changes made in the session up
@@ -424,6 +434,22 @@ class BookList(QMainWindow):
             log("close event ignored")
             event.ignore()
 
+    def user_wants_duplicate(self, book):
+        """Ask the user if they want to add a duplicate book.
+
+        """
+        
+        log("Book already exists in list.")
+        message_box = QMessageBox()
+        message_box.setText("{0} - {1}\n\nFound a book with the same author and title in the list. Do you want to add this book anyway?".format(book.author, book.title))
+        message_box.setWindowTitle("Book already exists")
+        yes_button = message_box.addButton("Add anyway", QMessageBox.YesRole)
+        no_button = message_box.addButton("Don't add", QMessageBox.NoRole)
+
+        message_box.setDefaultButton(no_button)
+        message_box.exec_()
+
+        return message_box.clickedButton() == yes_button
 
     def add_book(self):
         """Add a book to the list. This book goes into a separate list from the books
@@ -435,10 +461,13 @@ class BookList(QMainWindow):
         if not self.author_input.text() or not self.title_input.text():
             result = QMessageBox.warning(self, "Message", "Please enter both an author and title.")
         else:
-            self.book_model.add_book(Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd")))
-            self.reset_add_view()
-            self.resize_table()
-            self.update_status()
+            new_book = Book(self.title_input.text(), self.author_input.text(), self.date_input.date().toString("yyyy/MM/dd"))
+            duplicate = self.book_model.has_book(new_book)
+            if not duplicate or (duplicate and self.user_wants_duplicate(new_book)):
+                self.book_model.add_book(new_book)
+                self.reset_add_view()
+                self.resize_table()
+                self.update_status()
 
     def delete_book(self):
         log("deleting books")
